@@ -1,0 +1,66 @@
+:root {
+    font-family: "Varela Round", sans-serif;
+    color-scheme: light dark;
+    background: light-dark(#F5F5F5, #2B2A30);
+    color: light-dark(#0A0A0A, #F5F5F5);
+}
+input {
+    font-family: inherit;
+}
+input:invalid {
+    outline-color: #F00;
+    background-color: light-dark(#ECAAAA, #DC143C);
+}
+details, label {
+    margin: 4px;
+    padding: 4px;
+    border-radius: 4px;
+}
+details {
+    line-height: 2;
+    user-select: none;
+    background-color: light-dark(#EBEAED, #2B2933);
+}
+summary {
+    font-weight: 700;
+    border-bottom: 2px solid light-dark(#D3D3D3, #686868);
+    padding: 0, 4px;
+    margin-bottom: 4px;
+}
+input[type="checkbox"] {
+    display: none;
+}
+label {
+    background-color: light-dark(#D3D3D3, #686868);
+    white-space: nowrap;
+}
+input:checked + label {
+    background-color: light-dark(#FFB6C1, #AD4A3B);
+}
+input:not(:checked) + label {
+    background-color: light-dark(#98FB98, #497F49);
+}
+img.inline {
+    display: inline-block;
+    vertical-align: middle;
+    height: 1em;
+    width: auto;
+    filter: invert(100%);
+}
+img.icon {
+    filter: none;
+}
+@media (prefers-color-scheme: dark) {
+    img.inline {
+        filter: none;
+    }
+    img.icon {
+        filter: invert(100%);
+    }
+}
+span.i {
+    font-style: italic;
+}
+span.b {
+    font-weight: 700;
+}

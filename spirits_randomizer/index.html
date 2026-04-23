@@ -1,0 +1,364 @@
+<!doctype html>
+<link rel="shortcut icon" href="../assets/favicon.ico" />
+<link href="../style.css" rel="stylesheet" type="text/css" media="all">
+<title>Spirit Team Randomizer</title>
+<style>
+	:root {
+		--cf-percentage: 95%
+	}
+	div#out {
+		height: 100%;
+		overflow-y: auto;
+	}
+	div.team {
+		margin: 8px;
+		padding: 8px;
+		border-radius: 8px;
+		white-space: pre-wrap;
+		background-position: 50%;
+		background-size: 4em;
+		background-attachment: fixed;
+		background-clip: border-box;
+	}
+	div.team.atk {
+		background-color: #ED3F3F88;
+		background-image: -webkit-cross-fade(url("../assets/attr_attack.png"), linear-gradient(#0000), var(--cf-percentage));
+	}
+	div.team.def {
+		background-color: #1DADF888;
+		background-image: -webkit-cross-fade(url("../assets/attr_defense.png"), linear-gradient(#0000), var(--cf-percentage));
+	}
+	div.team.trw {
+		background-color: #1DBA1D88;
+		background-image: -webkit-cross-fade(url("../assets/attr_throw.png"), linear-gradient(#0000), var(--cf-percentage));
+	}
+	div.team.none {
+		background-color: #79648188;
+		background-image: -webkit-cross-fade(url("../assets/attr_neutral.png"), linear-gradient(#0000), var(--cf-percentage));
+	}
+</style>
+<script src="../data/spirits.js"></script>
+<script>
+	var otherOptions = {
+		amount: 3,
+		rm2Only: true
+	};
+	var banned = new Set();
+	var primaryFilters = {
+		slots: {0:false,1:false,2:false,3:false},
+		rank: {0:false,1:false,2:false,3:false},
+		attr: {atk:false,def:false,trw:false,none:false}
+	};
+	var teams = [];
+	var banPrefs, primaryPrefs, out, outProgress, progressSpan;
+	var checkDragVal = false;
+	function randomize(amt = 3) {
+		if (amt < 1) {
+			amt = 1;
+		} else if (amt > 1000) {
+			amt = 1000;
+		}
+		amt = Math.round(amt);
+		let randomSpirits;
+		if (!otherOptions.rm2Only) {
+			let rm2 = primaries.find((x) => x.name == "Ray Mk II");
+			randomSpirits = Array(amt).fill(rm2);
+		} else {
+			randomSpirits = getRandom(primaries.filter((x) => !(primaryFilters.slots[x.slots] || primaryFilters.rank[x.rank] || primaryFilters.attr[x.attr])), amt);
+		}
+		if (randomSpirits == undefined) {
+			return false;
+		}
+		teams = [];
+		for (let primary of randomSpirits) {
+			let team = {style: getRandom(styles, 1)[0], primary: primary, supports: []};
+			let open = primary.slots;
+			while (open > 0) {
+				let skill = getRandom(skills.filter((x) => !banned.has(String(x.sortIndex)) && x.cost <= open), 1)[0];
+				if (skill == undefined) {
+					break;
+				} else {
+					open -= skill.cost;
+					team.supports.push(skill);
+				}
+			}
+			teams.push(team);
+		}
+		outputTeams(teams);
+	}
+	async function outputTeams(teams) {
+		let teamElements = [];
+		for (let i = 0; i < teams.length; i++) {
+			let teamDiv = document.createElement("div");
+			teamDiv.className = "team " + teams[i].primary.attr;
+			let rankSpan = document.createElement("span");
+			let rankName = ranks[teams[i].primary.rank];
+			rankSpan.className = "rank b " + rankName;
+			rankSpan.innerHTML = "&#x2605".repeat(teams[i].primary.rank + 1) + " " + rankName.toUpperCase();
+			teamDiv.appendChild(rankSpan);
+			teamDiv.appendChild(document.createElement("br"));
+			teamDiv.innerHTML += slotsText(teams[i].primary.slots, true) + " ";
+			let styleName = document.createElement("span");
+			styleName.className = "i";
+			styleName.textContent = teams[i].style + " Style";
+			teamDiv.appendChild(styleName);
+			teamDiv.append(" ");
+			let primaryName = document.createElement("span");
+			primaryName.className = "b";
+			primaryName.innerHTML = teams[i].primary.name;
+			teamDiv.appendChild(primaryName);
+			teamDiv.append(" (");
+			teamDiv.appendChild(createImg(teams[i].primary.abilityIcon + ".png"));
+			teamDiv.innerHTML += teams[i].primary.ability + ")";
+			if (teams[i].supports.length > 0) {
+				let supportsDiv = document.createElement("div");
+				supportsDiv.className = "supports";
+				let supportElements = [];
+				for (let j = 0; j < teams[i].supports.length; j++) {
+					let supportSpan = document.createElement("span");
+					supportSpan.innerHTML += "\t" + slotsText(teams[i].supports[j].cost, false) + " ";
+					supportSpan.appendChild(createImg(teams[i].supports[j].abilityIcon + ".png"));
+					supportSpan.innerHTML += teams[i].supports[j].name;
+					supportElements.push(supportSpan);
+					if (j != teams[i].supports.length - 1) {
+						supportElements.push(document.createElement("br"));
+					}
+				}
+				supportsDiv.append(...supportElements);
+				teamDiv.appendChild(supportsDiv);
+			}
+			teamElements.push(teamDiv);
+			if (i % 10 == 0) {
+				outProgress.style.display = "initial";
+				progressSpan.textContent = (i * 100 / teams.length).toFixed(1);
+				await yieldFunc();
+			}
+		}
+		outProgress.style.display = "none";
+		out.innerHTML = "";
+		out.append(...teamElements);
+	}
+	function createImg(fileName) {
+		let img = document.createElement("img");
+		img.src = "../assets/" + fileName;
+		img.className = "inline";
+		img.draggable = false;
+		return img;
+	}
+	function slotsText(numSlots, isPrimary) {
+		return ((isPrimary) ? "&#x2B22" : "&#x2B21").repeat(numSlots);
+	}
+	onload = function () {
+		out = document.querySelector("#out");
+		banPrefs = document.querySelector("#banPrefs");
+		primaryPrefs = document.querySelector("#primaryPrefs");
+		outProgress = document.querySelector("#outProgress");
+		progressSpan = document.querySelector("#progressSpan");
+		if (tryParseJSONObject(localStorage.getItem("bannedSkills"))) {
+			banned = new Set(JSON.parse(localStorage.getItem("bannedSkills")));
+		} else {
+			localStorage.setItem("bannedSkills", JSON.stringify(Array.from(banned)));
+		}
+		if (tryParseJSONObject(localStorage.getItem("otherOptions"))) {
+			otherOptions = JSON.parse(localStorage.getItem("otherOptions"));
+			document.querySelector("#amt").value = otherOptions.amount;
+		} else {
+			localStorage.setItem("otherOptions", JSON.stringify(otherOptions));
+		}
+		if (tryParseJSONObject(localStorage.getItem("primaryFilters"))) {
+			primaryFilters = JSON.parse(localStorage.getItem("primaryFilters"));
+		} else {
+			localStorage.setItem("primaryFilters", JSON.stringify(primaryFilters));
+		}
+
+		let change = new Event("change");
+		for (let skill of skills.sort((a, b) => a.sortIndex - b.sortIndex)) {
+			let label = document.createElement("label");
+			label.innerHTML = slotsText(skill.cost, false) + " ";
+			label.appendChild(createImg(skill.abilityIcon + ".png"));
+			label.innerHTML += " " + skill.name;
+			label.htmlFor = "sk" + skill.sortIndex;
+			let checkbox = document.createElement("input");
+			checkbox.type = "checkbox";
+			checkbox.id = label.htmlFor;
+			checkbox.name = skill.sortIndex;
+			checkbox.disabled = true;
+			if (banned.has(checkbox.name)) {
+				checkbox.checked = true;
+				checkbox.dispatchEvent(change);
+			}
+			checkbox.addEventListener("change", (event) => {
+				if (checkbox.checked) {
+					banned.add(checkbox.name);
+				} else if (banned.has(checkbox.name)) {
+					banned.delete(checkbox.name);
+				} else {
+					return;
+				}
+				localStorage.setItem("bannedSkills", JSON.stringify(Array.from(banned)));
+			});
+			label.addEventListener("mousedown", (event) => {
+				checkDragVal = !checkbox.checked;
+				checkbox.checked = checkDragVal;
+				checkbox.dispatchEvent(change);
+			});
+			label.addEventListener("mouseenter", (event) => {
+				if (event.buttons == 1) {
+					checkbox.checked = checkDragVal;
+					checkbox.dispatchEvent(change);
+				}
+			});
+			banPrefs.appendChild(checkbox);
+			banPrefs.appendChild(label);
+			banPrefs.append(" ");
+		}
+
+		let slotPrefs = document.createElement("div");
+		slotPrefs.append("Slots: ");
+		for (let i = 0; i <= 3; i++) {
+			let label = document.createElement("label");
+			if (i == 0) {
+				label.append("No Slots");
+			} else {
+				label.innerHTML = slotsText(i, true);
+			}
+			label.htmlFor = "sl" + i;
+			let checkbox = document.createElement("input");
+			checkbox.type = "checkbox";
+			checkbox.id = label.htmlFor;
+			checkbox.name = i;
+			checkbox.addEventListener("change", (event) => {
+				primaryFilters.slots[checkbox.name] = checkbox.checked;
+				localStorage.setItem("primaryFilters", JSON.stringify(primaryFilters));
+			});
+			if (primaryFilters.slots[checkbox.name]) {
+				checkbox.checked = true;
+				checkbox.dispatchEvent(change);
+			}
+			slotPrefs.appendChild(checkbox);
+			slotPrefs.appendChild(label);
+		}
+
+		let rankPrefs = document.createElement("div");
+		rankPrefs.append("Rank: ");
+		for (let i = 0; i < 4; i++) {
+			let label = document.createElement("label");
+			label.innerHTML = "&#x2605".repeat(i + 1);
+			label.htmlFor = "ra" + i;
+			let checkbox = document.createElement("input");
+			checkbox.type = "checkbox";
+			checkbox.id = label.htmlFor;
+			checkbox.name = i;
+			checkbox.addEventListener("change", (event) => {
+				primaryFilters.rank[checkbox.name] = checkbox.checked;
+				localStorage.setItem("primaryFilters", JSON.stringify(primaryFilters));
+			});
+			if (primaryFilters.rank[checkbox.name]) {
+				checkbox.checked = true;
+				checkbox.dispatchEvent(change);
+			}
+			rankPrefs.appendChild(checkbox);
+			rankPrefs.appendChild(label);
+		}
+
+		let attrPrefs = document.createElement("div");
+		attrPrefs.append("Type: ");
+		for (let attr in primaryFilters.attr) {
+			let label = document.createElement("label");
+			label.appendChild(createImg(attrMap[attr] + ".png"));
+			label.className = attr;
+			label.htmlFor = attr;
+			let checkbox = document.createElement("input");
+			checkbox.type = "checkbox";
+			checkbox.id = label.htmlFor;
+			checkbox.name = attr;
+			checkbox.addEventListener("change", (event) => {
+				primaryFilters.attr[checkbox.name] = checkbox.checked;
+				localStorage.setItem("primaryFilters", JSON.stringify(primaryFilters));
+			});
+			if (primaryFilters.attr[checkbox.name]) {
+				checkbox.checked = true;
+				checkbox.dispatchEvent(change);
+			}
+			attrPrefs.appendChild(checkbox);
+			attrPrefs.appendChild(label);
+		}
+
+		let miscPrefs = document.createElement("div");
+		miscPrefs.append("Other: ");
+		// Ray Mk II Only Mode
+		let rm2OnlyToggle = createToggle("Ray Mk II Only", "otRM2O", "rm2Only");
+		rm2OnlyToggle[0].addEventListener("change", (event) => {
+			otherOptions.rm2Only = rm2OnlyToggle[0].checked;
+			localStorage.setItem("otherOptions", JSON.stringify(otherOptions));
+		});
+		if (otherOptions.rm2Only) {
+			rm2OnlyToggle[0].checked = true;
+			rm2OnlyToggle[0].dispatchEvent(change);
+		}
+		miscPrefs.append(...rm2OnlyToggle);
+
+		primaryPrefs.appendChild(slotPrefs);
+		primaryPrefs.appendChild(rankPrefs);
+		primaryPrefs.appendChild(attrPrefs);
+		primaryPrefs.appendChild(miscPrefs);
+		if (window.matchMedia("(any-hover:none)").matches) {
+			// The dark mode also isn't great, but I don't think an alert for that is needed
+			alert("This website was designed for use with keyboard + mouse/touchpad.");
+		}
+	}
+	function createToggle(text, id, name) {
+		let label = document.createElement("label");
+		label.textContent = text;
+		label.htmlFor = id;
+		let checkbox = document.createElement("input");
+		checkbox.type = "checkbox";
+		checkbox.id = label.htmlFor;
+		checkbox.name = name;
+		return [checkbox, label];
+	}
+	function getRandom(arr, n) {
+		if (arr.length == 0) {
+			return [];
+		}
+		let result = [];
+		for (let i = 0; i < n; i++) {
+			result.push(arr[Math.floor(Math.random() * arr.length)]);
+		}
+		return result;
+	}
+
+	// https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Performance/JavaScript#breaking_down_long_tasks
+	function yieldFunc() {
+		// Use scheduler.yield() if available
+		if ("scheduler" in window && "yield" in scheduler) {
+			return scheduler.yield();
+		}
+		// Fall back to setTimeout:
+		return new Promise((resolve) => {
+			setTimeout(resolve, 0);
+		});
+	}
+	// Source - https://stackoverflow.com/a/20392392
+	// Posted by Matt H., modified by community. See post 'Timeline' for change history
+	// Retrieved 2026-04-11, License - CC BY-SA 4.0
+	function tryParseJSONObject(jsonString) {
+		try {
+			var o = JSON.parse(jsonString);
+			if (o && typeof o === "object") {
+				return o;
+			}
+		}
+		catch (e) {};
+		return false;
+	}
+</script>
+<noscript><h2>This page requires JavaScript to be enabled in order to function properly!</h2></noscript>
+<h1><img class="inline icon" src="../assets/favicon.ico"> Spirit Team Randomizer</h1>
+<label>Number of Teams <input id="amt" type="number" onchange="otherOptions.amount = this.value; localStorage.setItem('otherOptions', JSON.stringify(otherOptions));" onmousewheel value="3" min="1" max="1000" step="1"></label><br>
+<details id="banPrefs"><summary>Banned Skills</summary></details>
+<details id="primaryPrefs">
+	<summary>Primary Spirit Filters</summary>
+</details>
+<input type="button" value="Randomize Teams!" onclick="randomize(otherOptions.amount);"><div id="outProgress" style="display: none;">Progress: <span id="progressSpan">100.0</span>%</div>
+<div id="out">Spirit teams will appear here once you press the "Randomize Teams!" button.</div>
